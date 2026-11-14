@@ -94,17 +94,16 @@ st.markdown("""
 # ==========================================
 # GESTIÓN DE RUTAS Y BASE DE DATOS LOCAL
 # ==========================================
-SERVICES_DIR = Path(__file__).resolve().parent
-PROJECT_ROOT = SERVICES_DIR.parent.parent
-DB_PATH = SERVICES_DIR / "autolavado.db"
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DB_PATH = os.path.join(BASE_DIR, "autolavado.db")
 
+# Rutas de respaldo para búsqueda de Excel solo en caso de que autolavado.db no exista
+PROJECT_ROOT = os.path.abspath(os.path.join(BASE_DIR, "..", ".."))
 EXCEL_CANDIDATES = [
-    PROJECT_ROOT / "notebooks" / "Registro_Ventas_Autolavado_v3 (1).xlsx",
-    PROJECT_ROOT / "notebooks" / "Registro_Ventas_Autolavado_v3.xlsx",
-    Path("notebooks/Registro_Ventas_Autolavado_v3 (1).xlsx"),
-    Path("C:/Users/josea/data-startup-autolavado-la-estancia/notebooks/Registro_Ventas_Autolavado_v3 (1).xlsx"),
-    Path("C:/Users/josea/Documents/Registro_Ventas_Autolavado_v3 (1).xlsx"),
-    Path("C:/Users/josea/Downloads/Registro_Ventas_Autolavado_v3 (1).xlsx")
+    os.path.join(PROJECT_ROOT, "notebooks", "Registro_Ventas_Autolavado_v3 (1).xlsx"),
+    os.path.join(PROJECT_ROOT, "notebooks", "Registro_Ventas_Autolavado_v3.xlsx"),
+    os.path.join("notebooks", "Registro_Ventas_Autolavado_v3 (1).xlsx"),
+    os.path.join("notebooks", "Registro_Ventas_Autolavado_v3.xlsx")
 ]
 
 CATALOGO_SERVICIOS = [
@@ -128,18 +127,24 @@ DIAS_SEMANA_MAP = {
 }
 
 def get_connection():
-    """Retorna una conexión a SQLite optimizada."""
-    conn = sqlite3.connect(str(DB_PATH), check_same_thread=False)
+    """Retorna una conexión a SQLite optimizada usando la ruta dinámica local."""
+    conn = sqlite3.connect(DB_PATH, check_same_thread=False)
     conn.execute("PRAGMA journal_mode = WAL;")
     return conn
 
 @st.cache_resource(show_spinner=False)
 def initialize_database():
-    """Inicializa la base de datos importando el Excel histórico si aún no existe."""
+    """
+    Inicializa la base de datos.
+    Si autolavado.db ya existe y tiene registros, se conecta directamente sin buscar el Excel.
+    Solo busca e importa el Excel si la base de datos no existe o está vacía.
+    """
+    db_already_existed = os.path.exists(DB_PATH) and os.path.getsize(DB_PATH) > 0
+    
     conn = get_connection()
     cursor = conn.cursor()
     
-    # Crear tabla si no existe
+    # Crear tabla e índices si no existen
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS ventas (
             id_ticket TEXT PRIMARY KEY,
@@ -155,41 +160,46 @@ def initialize_database():
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_ventas_servicio ON ventas(tipo_servicio);")
     conn.commit()
     
-    # Verificar si ya cuenta con registros
+    # Verificar cantidad de registros
     cursor.execute("SELECT COUNT(*) FROM ventas;")
     count = cursor.fetchone()[0]
     
-    if count == 0:
-        excel_found = None
-        for candidate in EXCEL_CANDIDATES:
-            if candidate.exists():
-                excel_found = candidate
-                break
-                
-        if excel_found:
-            with st.spinner(f"Inicializando base de datos desde {excel_found.name} (103k+ registros)..."):
-                df_excel = pd.read_excel(excel_found, skiprows=3)
-                df_excel.columns = [c.strip() for c in df_excel.columns]
-                
-                col_map = {
-                    'ID Ticket': 'id_ticket',
-                    'Fecha': 'fecha',
-                    'Día de la Semana': 'dia_semana',
-                    'Hora': 'hora',
-                    'Tipo de Vehículo / Servicio': 'tipo_servicio',
-                    'Precio ($)': 'precio'
-                }
-                df_clean = df_excel[list(col_map.keys())].rename(columns=col_map)
-                
-                df_clean['id_ticket'] = df_clean['id_ticket'].astype(str).str.strip()
-                df_clean['fecha'] = pd.to_datetime(df_clean['fecha']).dt.strftime('%Y-%m-%d')
-                df_clean['dia_semana'] = df_clean['dia_semana'].astype(str).str.strip()
-                df_clean['hora'] = df_clean['hora'].astype(str).str.strip()
-                df_clean['tipo_servicio'] = df_clean['tipo_servicio'].astype(str).str.strip()
-                df_clean['precio'] = pd.to_numeric(df_clean['precio'], errors='coerce').fillna(0.0)
-                
-                df_clean.to_sql('ventas', conn, if_exists='append', index=False, chunksize=10000)
-                conn.commit()
+    # Si ya contiene datos, salir de inmediato sin buscar ningún Excel
+    if count > 0:
+        conn.close()
+        return True
+        
+    # Solo si está vacía, intentar buscar candidatos de Excel locales
+    excel_found = None
+    for candidate in EXCEL_CANDIDATES:
+        if os.path.exists(candidate):
+            excel_found = candidate
+            break
+            
+    if excel_found:
+        with st.spinner("Inicializando base de datos desde archivo histórico..."):
+            df_excel = pd.read_excel(excel_found, skiprows=3)
+            df_excel.columns = [c.strip() for c in df_excel.columns]
+            
+            col_map = {
+                'ID Ticket': 'id_ticket',
+                'Fecha': 'fecha',
+                'Día de la Semana': 'dia_semana',
+                'Hora': 'hora',
+                'Tipo de Vehículo / Servicio': 'tipo_servicio',
+                'Precio ($)': 'precio'
+            }
+            df_clean = df_excel[list(col_map.keys())].rename(columns=col_map)
+            
+            df_clean['id_ticket'] = df_clean['id_ticket'].astype(str).str.strip()
+            df_clean['fecha'] = pd.to_datetime(df_clean['fecha']).dt.strftime('%Y-%m-%d')
+            df_clean['dia_semana'] = df_clean['dia_semana'].astype(str).str.strip()
+            df_clean['hora'] = df_clean['hora'].astype(str).str.strip()
+            df_clean['tipo_servicio'] = df_clean['tipo_servicio'].astype(str).str.strip()
+            df_clean['precio'] = pd.to_numeric(df_clean['precio'], errors='coerce').fillna(0.0)
+            
+            df_clean.to_sql('ventas', conn, if_exists='append', index=False, chunksize=10000)
+            conn.commit()
     
     conn.close()
     return True

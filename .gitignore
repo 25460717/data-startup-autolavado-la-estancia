@@ -1,0 +1,29 @@
+# Entornos virtuales
+venv/
+.venv/
+env/
+ENV/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+
+# Archivos pesados o datos locales
+notebooks/*.xlsx
+notebooks/*.csv
+data/raw/*
+!data/raw/.gitkeep
+
+# Base de datos SQLite del tablero: PERMITIDA para despliegue en la nube
+!services/tablero/autolavado.db
+
+# Sistema operativo e IDEs
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
