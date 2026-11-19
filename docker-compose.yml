@@ -1,0 +1,20 @@
+version: "3.9"
+services:
+  ingesta:
+    build: ./services/ingesta
+    ports:
+      - "8001:8080"
+  modelos:
+    build: ./services/modelos
+    ports:
+      - "8002:8080"
+  tablero:
+    build: ./services/tablero
+    ports:
+      - "8501:8501"
+    environment:
+      - API_MODELOS_URL=http://modelos:8080
+      - API_INGESTA_URL=http://ingesta:8080
+    depends_on:
+      - ingesta
+      - modelos

@@ -1,0 +1,63 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: autolavado-tablero
+  labels:
+    app: autolavado-tablero
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: autolavado-tablero
+  template:
+    metadata:
+      labels:
+        app: autolavado-tablero
+    spec:
+      containers:
+      - name: tablero
+        image: autolavado-tablero:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 8501
+        env:
+        - name: API_MODELOS_URL
+          value: "http://autolavado-modelos-svc:8000"
+        resources:
+          requests:
+            cpu: "250m"
+            memory: "512Mi"
+          limits:
+            cpu: "1000m"
+            memory: "1Gi"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: autolavado-tablero-svc
+spec:
+  type: LoadBalancer
+  ports:
+  - port: 80
+    targetPort: 8501
+  selector:
+    app: autolavado-tablero
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: autolavado-tablero-hpa
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: autolavado-tablero
+  minReplicas: 2
+  maxReplicas: 6
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
