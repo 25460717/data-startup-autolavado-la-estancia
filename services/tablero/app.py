@@ -7,8 +7,26 @@ import numpy as np
 import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
-from sklearn.ensemble import RandomForestRegressor
-from sklearn.metrics import mean_absolute_error, r2_score
+from sklearn.model_selection import train_test_split, KFold, cross_val_score
+from sklearn.preprocessing import StandardScaler, OneHotEncoder
+from sklearn.compose import ColumnTransformer
+from sklearn.pipeline import Pipeline
+from sklearn.impute import SimpleImputer
+from sklearn.linear_model import LinearRegression
+from sklearn.tree import DecisionTreeRegressor, DecisionTreeClassifier
+from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor, RandomForestClassifier
+from sklearn.neighbors import KNeighborsRegressor, KNeighborsClassifier
+from sklearn.naive_bayes import GaussianNB
+from sklearn.metrics import (
+    mean_absolute_error,
+    root_mean_squared_error,
+    r2_score,
+    accuracy_score,
+    precision_score,
+    recall_score,
+    f1_score,
+    confusion_matrix
+)
 
 # ==========================================
 # CONFIGURACIÓN GENERAL Y ESTILOS DE LA PÁGINA
@@ -405,6 +423,192 @@ def train_and_forecast_ml(target_variable="vehiculos", horizon_days=14):
     }
 
 # ==========================================
+# FUNCIONES DE BENCHMARK DE MODELOS (AVANCE 2)
+# ==========================================
+@st.cache_data(ttl=300)
+def benchmark_regression_models(target_col='vehiculos', test_size=0.20, n_splits=5):
+    """
+    Entrena y evalúa 5 modelos de regresión de la Unidad 3 con:
+    - Preprocesamiento formal: Imputación, StandardScaler (numéricas) y OneHotEncoder (categóricas).
+    - Partición Train/Test y Validación Cruzada K-Fold.
+    - Métricas formales: MAE, RMSE, R² y K-Fold Score.
+    """
+    conn = get_connection()
+    df_raw = pd.read_sql_query("SELECT fecha, precio FROM ventas;", conn)
+    conn.close()
+    
+    df_raw['fecha'] = pd.to_datetime(df_raw['fecha'])
+    daily = df_raw.groupby('fecha').agg(
+        vehiculos=('precio', 'count'),
+        ingresos=('precio', 'sum')
+    ).reset_index().sort_values('fecha').reset_index(drop=True)
+    
+    idx_full = pd.date_range(daily['fecha'].min(), daily['fecha'].max(), freq='D')
+    daily = daily.set_index('fecha').reindex(idx_full, fill_value=0).reset_index().rename(columns={'index': 'fecha'})
+    
+    # Feature Engineering
+    daily['dia_nombre'] = daily['fecha'].dt.day_name()
+    daily['dia_mes'] = daily['fecha'].dt.day
+    daily['mes'] = daily['fecha'].dt.month
+    daily['es_fin_semana'] = daily['fecha'].dt.dayofweek.isin([4, 5, 6]).astype(int)
+    daily['es_quincena'] = daily['dia_mes'].isin([14, 15, 16, 29, 30, 31, 1]).astype(int)
+    daily['media_movil_7d'] = daily[target_col].shift(1).rolling(7, min_periods=1).mean()
+    daily['media_movil_14d'] = daily[target_col].shift(1).rolling(14, min_periods=1).mean()
+    
+    daily = daily.dropna().reset_index(drop=True)
+    
+    num_cols = ['dia_mes', 'mes', 'es_fin_semana', 'es_quincena', 'media_movil_7d', 'media_movil_14d']
+    cat_cols = ['dia_nombre']
+    
+    X = daily[num_cols + cat_cols]
+    y = daily[target_col]
+    
+    # Pipeline de Preprocesamiento Formal
+    num_pipeline = Pipeline([
+        ('imputer', SimpleImputer(strategy='median')),
+        ('scaler', StandardScaler())
+    ])
+    cat_pipeline = Pipeline([
+        ('imputer', SimpleImputer(strategy='most_frequent')),
+        ('encoder', OneHotEncoder(drop='first', sparse_output=False, handle_unknown='ignore'))
+    ])
+    preprocessor = ColumnTransformer([
+        ('num', num_pipeline, num_cols),
+        ('cat', cat_pipeline, cat_cols)
+    ])
+    
+    # Partición Train/Test
+    X_train, X_test, y_train, y_test = train_test_split(
+        X, y, test_size=test_size, random_state=42, shuffle=False
+    )
+    
+    models = {
+        'Regresión Lineal': LinearRegression(),
+        'Árbol de Decisión (CART)': DecisionTreeRegressor(max_depth=8, random_state=42),
+        'Random Forest Regressor': RandomForestRegressor(n_estimators=100, max_depth=10, random_state=42, n_jobs=-1),
+        'Gradient Boosting Regressor': GradientBoostingRegressor(n_estimators=100, max_depth=5, random_state=42),
+        'KNN Regresor (k-Nearest Neighbors)': KNeighborsRegressor(n_neighbors=7)
+    }
+    
+    results = []
+    trained_pipes = {}
+    kf = KFold(n_splits=n_splits, shuffle=True, random_state=42)
+    
+    for name, model_inst in models.items():
+        pipe = Pipeline([
+            ('preprocessor', preprocessor),
+            ('regressor', model_inst)
+        ])
+        pipe.fit(X_train, y_train)
+        y_pred = pipe.predict(X_test)
+        
+        mae = mean_absolute_error(y_test, y_pred)
+        rmse = root_mean_squared_error(y_test, y_pred)
+        r2 = r2_score(y_test, y_pred)
+        
+        # Validación Cruzada K-Fold sobre Train
+        cv_scores = cross_val_score(pipe, X_train, y_train, cv=kf, scoring='r2', n_jobs=-1)
+        
+        results.append({
+            'Algoritmo': name,
+            'Familia': 'Árboles / Ensamble' if 'Forest' in name or 'Tree' in name or 'Boosting' in name else ('Lineal' if 'Lineal' in name else 'Basado en Instancias'),
+            'MAE': round(mae, 2),
+            'RMSE': round(rmse, 2),
+            'R² Score': round(r2, 4),
+            'K-Fold CV R² (Promedio)': round(cv_scores.mean(), 4),
+            'K-Fold CV Std': round(cv_scores.std(), 4)
+        })
+        trained_pipes[name] = pipe
+        
+    df_results = pd.DataFrame(results).sort_values(by='R² Score', ascending=False).reset_index(drop=True)
+    return df_results, X_test, y_test, trained_pipes
+
+@st.cache_data(ttl=300)
+def benchmark_classification_models(sample_size=25000, test_size=0.20, n_splits=5):
+    """
+    Entrena y evalúa 4 modelos de clasificación de la Unidad 3:
+    - Naive Bayes, KNN, Árbol de Decisión y Random Forest.
+    - Problema: Clasificación de clientes que solicitan Servicio Detallado / Especial vs Normal.
+    - Preprocesamiento: Imputación, Escalado numérico y One-Hot Encoding.
+    - Métricas: Accuracy, Precision, Recall y F1-Score.
+    """
+    conn = get_connection()
+    df_raw = pd.read_sql_query(
+        f"SELECT dia_semana, hora, tipo_servicio, precio FROM ventas LIMIT {sample_size};", 
+        conn
+    )
+    conn.close()
+    
+    def parse_h(h):
+        try:
+            return int(str(h).split(':')[0])
+        except Exception:
+            return 12
+            
+    df_raw['hora_num'] = df_raw['hora'].apply(parse_h)
+    df_raw['es_fin_semana'] = df_raw['dia_semana'].isin(['Viernes', 'Sábado', 'Domingo']).astype(int)
+    # Variable objetivo binaria: Servicio Detallado o Especial (1) vs Básico (0)
+    df_raw['target_detallado'] = df_raw['tipo_servicio'].str.contains('Detallado|Cuatrimoto|Can-Am').astype(int)
+    
+    num_cols = ['hora_num', 'precio', 'es_fin_semana']
+    cat_cols = ['dia_semana']
+    
+    X = df_raw[num_cols + cat_cols]
+    y = df_raw['target_detallado']
+    
+    preprocessor = ColumnTransformer([
+        ('num', Pipeline([
+            ('imputer', SimpleImputer(strategy='mean')),
+            ('scaler', StandardScaler())
+        ]), num_cols),
+        ('cat', Pipeline([
+            ('imputer', SimpleImputer(strategy='most_frequent')),
+            ('encoder', OneHotEncoder(drop='first', sparse_output=False, handle_unknown='ignore'))
+        ]), cat_cols)
+    ])
+    
+    X_train, X_test, y_train, y_test = train_test_split(
+        X, y, test_size=test_size, random_state=42, stratify=y
+    )
+    
+    clf_models = {
+        'Naive Bayes (GaussianNB)': GaussianNB(),
+        'KNN (k-Nearest Neighbors)': KNeighborsClassifier(n_neighbors=7),
+        'Árbol de Decisión (CART)': DecisionTreeClassifier(max_depth=6, random_state=42),
+        'Random Forest Classifier': RandomForestClassifier(n_estimators=80, max_depth=6, random_state=42, n_jobs=-1)
+    }
+    
+    results = []
+    kf = KFold(n_splits=n_splits, shuffle=True, random_state=42)
+    
+    for name, model_inst in clf_models.items():
+        pipe = Pipeline([
+            ('preprocessor', preprocessor),
+            ('classifier', model_inst)
+        ])
+        pipe.fit(X_train, y_train)
+        y_pred = pipe.predict(X_test)
+        
+        acc = accuracy_score(y_test, y_pred)
+        prec = precision_score(y_test, y_pred, zero_division=0)
+        rec = recall_score(y_test, y_pred, zero_division=0)
+        f1 = f1_score(y_test, y_pred, zero_division=0)
+        
+        cv_scores = cross_val_score(pipe, X_train, y_train, cv=kf, scoring='f1', n_jobs=-1)
+        
+        results.append({
+            'Algoritmo': name,
+            'Accuracy': round(acc, 4),
+            'Precision': round(prec, 4),
+            'Recall': round(rec, 4),
+            'F1-Score': round(f1, 4),
+            'K-Fold CV F1 (Promedio)': round(cv_scores.mean(), 4)
+        })
+        
+    df_results = pd.DataFrame(results).sort_values(by='F1-Score', ascending=False).reset_index(drop=True)
+    return df_results, X_test, y_test
+
+# ==========================================
 # NAVEGACIÓN LATERAL
 # ==========================================
 with st.sidebar:
@@ -418,7 +622,8 @@ with st.sidebar:
             "Registro de Ventas (Caja POS)",
             "Dashboard Analítico Histórico",
             "Predicción de Demanda e Ingresos (Machine Learning)",
-            "Calculadora de Insumos y Turnos de Personal"
+            "Calculadora de Insumos y Turnos de Personal",
+            "Avance 2: Modelos ML y Preprocesamiento"
         ],
         index=0
     )
@@ -1157,3 +1362,248 @@ elif pagina == "Calculadora de Insumos y Turnos de Personal":
             use_container_width=True,
             hide_index=True
         )
+
+# ==========================================
+# PÁGINA 5: AVANCE 2: MODELOS ML Y PREPROCESAMIENTO
+# ==========================================
+elif pagina == "Avance 2: Modelos ML y Preprocesamiento":
+    st.markdown("""
+    <div class="hero-header">
+        <div class="hero-title">📌 Avance 2: Preprocesamiento y Benchmark de Modelos ML</div>
+        <div class="hero-subtitle">Entrenamiento y comparación de modelos de la Unidad 3 (Regresión y Clasificación)</div>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # Selector de Enfoque Académico
+    st.markdown("### 🔀 Selección de Enfoque y Tipo de Aprendizaje")
+    enfoque = st.radio(
+        "Selecciona el problema a evaluar:",
+        options=[
+            "Enfoque 1: Modelos de Series de Tiempo / Regresión (Demanda e Ingresos)",
+            "Enfoque 2: Modelos de Clasificación (Naive Bayes, KNN, Árboles, Random Forest)"
+        ],
+        index=0,
+        horizontal=True
+    )
+    
+    st.markdown("---")
+    
+    # ----------------------------------------------------
+    # ENFOQUE 1: REGRESIÓN / SERIES DE TIEMPO
+    # ----------------------------------------------------
+    if "Enfoque 1" in enfoque:
+        st.markdown("### ⚙️ 1. Configuración de Preprocesamiento y Partición de Datos")
+        
+        c1, c2, c3 = st.columns([1, 1, 1])
+        with c1:
+            target_reg = st.selectbox(
+                "Variable Objetivo:",
+                options=['vehiculos', 'ingresos'],
+                format_func=lambda x: "🚗 Vehículos Lavados por Día" if x == 'vehiculos' else "💰 Ingresos Diarios ($ MXN)"
+            )
+        with c2:
+            test_ratio = st.slider(
+                "Proporción de Partición Train / Test:",
+                min_value=0.10,
+                max_value=0.40,
+                value=0.20,
+                step=0.05,
+                help="Ej. 0.20 equivale a una división formal 80% Train / 20% Test."
+            )
+        with c3:
+            k_folds = st.slider("Folds de Validación Cruzada (K-Fold):", min_value=3, max_value=10, value=5, step=1)
+            
+        with st.expander("🛠️ Ver Pipeline de Preprocesamiento e Ingeniería de Características Aplicado", expanded=False):
+            st.markdown("""
+            * **Imputación de Nulos:** `SimpleImputer` (mediana para numéricas continuas y moda para categóricas).
+            * **Estandarización / Escalamiento:** `StandardScaler` aplicado sobre `dia_mes`, `mes`, `es_fin_semana`, `es_quincena`, `media_movil_7d` y `media_movil_14d`.
+            * **Codificación Categórica:** `OneHotEncoder(drop='first', sparse_output=False)` aplicado sobre `dia_nombre` (Día de la semana).
+            * **Partición de Datos:** `train_test_split` con proporción seleccionada + Validación Cruzada K-Fold ($K={k_folds}$).
+            """)
+            
+        with st.spinner("Entrenando y validando los 5 modelos de regresión..."):
+            df_comp_reg, X_test_reg, y_test_reg, trained_reg_pipes = benchmark_regression_models(
+                target_col=target_reg, test_size=test_ratio, n_splits=k_folds
+            )
+            
+        # Métricas de Resumen del Mejor Modelo
+        best_model_reg = df_comp_reg.iloc[0]
+        st.markdown("### 🏆 Algoritmo con Mejor Rendimiento")
+        top_c1, top_c2, top_c3, top_c4 = st.columns(4)
+        with top_c1:
+            st.markdown(f"""
+            <div class="metric-card">
+                <div class="metric-label">Modelo Ganador</div>
+                <div class="metric-value" style="font-size: 1.3rem;">{best_model_reg['Algoritmo']}</div>
+                <div class="metric-sub">Familia: {best_model_reg['Familia']}</div>
+            </div>
+            """, unsafe_allow_html=True)
+        with top_c2:
+            st.markdown(f"""
+            <div class="metric-card">
+                <div class="metric-label">R² Score (Test)</div>
+                <div class="metric-value">{best_model_reg['R² Score']:.4f}</div>
+                <div class="metric-sub">Varianza explicada</div>
+            </div>
+            """, unsafe_allow_html=True)
+        with top_c3:
+            unit_str = "autos" if target_reg == 'vehiculos' else "$ MXN"
+            st.markdown(f"""
+            <div class="metric-card">
+                <div class="metric-label">MAE (Error Medio)</div>
+                <div class="metric-value">{best_model_reg['MAE']} {unit_str}</div>
+                <div class="metric-sub">Desviación promedio</div>
+            </div>
+            """, unsafe_allow_html=True)
+        with top_c4:
+            st.markdown(f"""
+            <div class="metric-card">
+                <div class="metric-label">RMSE (Raíz Error Cuadrático)</div>
+                <div class="metric-value">{best_model_reg['RMSE']} {unit_str}</div>
+                <div class="metric-sub">Penalización de atípicos</div>
+            </div>
+            """, unsafe_allow_html=True)
+            
+        st.markdown("<br>", unsafe_allow_html=True)
+        
+        # Tabla Comparativa de Rendimiento Preliminar
+        st.markdown("### 📊 4. Tabla Comparativa de Rendimiento Preliminar")
+        st.dataframe(
+            df_comp_reg,
+            use_container_width=True,
+            hide_index=True,
+            column_config={
+                "R² Score": st.column_config.NumberColumn(format="%.4f"),
+                "MAE": st.column_config.NumberColumn(format="%.2f"),
+                "RMSE": st.column_config.NumberColumn(format="%.2f"),
+                "K-Fold CV R² (Promedio)": st.column_config.NumberColumn(format="%.4f")
+            }
+        )
+        
+        # Gráfica Comparativa de Métricas
+        fig_comp = px.bar(
+            df_comp_reg,
+            x='Algoritmo',
+            y=['R² Score', 'K-Fold CV R² (Promedio)'],
+            barmode='group',
+            title='<b>Comparativa de Precisión R² (Test vs. K-Fold Cross Validation)</b>',
+            template='plotly_dark',
+            color_discrete_sequence=['#38bdf8', '#a855f7']
+        )
+        fig_comp.update_layout(
+            paper_bgcolor='rgba(15, 23, 42, 0.6)',
+            plot_bgcolor='rgba(15, 23, 42, 0.6)',
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+        )
+        st.plotly_chart(fig_comp, use_container_width=True)
+        
+    # ----------------------------------------------------
+    # ENFOQUE 2: CLASIFICACIÓN (UNIDAD 3)
+    # ----------------------------------------------------
+    else:
+        st.markdown("### ⚙️ 1. Configuración de Preprocesamiento y Partición (Clasificación)")
+        st.caption("Objetivo: Clasificar si un ticket corresponde a Servicio Detallado / Especial (1) o Servicio Normal / Taxi (0).")
+        
+        c1, c2 = st.columns([1, 1])
+        with c1:
+            sample_reg = st.select_slider(
+                "Muestra de Datos para Entrenamiento Rápido:",
+                options=[10000, 25000, 50000],
+                value=25000,
+                format_func=lambda x: f"{x:,} registros"
+            )
+        with c2:
+            test_clf_ratio = st.slider(
+                "División Train/Test:",
+                min_value=0.10,
+                max_value=0.40,
+                value=0.20,
+                step=0.05,
+                key="slider_clf_split"
+            )
+            
+        with st.expander("🛠️ Preprocesamiento e Ingeniería de Características Aplicada", expanded=False):
+            st.markdown("""
+            * **Imputación de Nulos:** `SimpleImputer` (media en numéricas, moda en categóricas).
+            * **Estandarización / Escalamiento:** `StandardScaler` en `hora_num`, `precio` y `es_fin_semana`.
+            * **Codificación Categórica:** `OneHotEncoder(drop='first')` en `dia_semana`.
+            * **Partición Estratificada:** `train_test_split(stratify=y, test_size=...)` para conservar proporciones de clases.
+            * **Validación Cruzada:** 5-Fold Cross Validation evaluando `F1-Score`.
+            """)
+            
+        with st.spinner("Entrenando modelos de la Unidad 3: Naive Bayes, KNN, Árbol de Decisión y Random Forest..."):
+            df_comp_clf, X_test_clf, y_test_clf = benchmark_classification_models(
+                sample_size=sample_reg, test_size=test_clf_ratio
+            )
+            
+        best_clf = df_comp_clf.iloc[0]
+        st.markdown("### 🏆 Modelo Clasificador Más Óptimo")
+        b1, b2, b3, b4 = st.columns(4)
+        with b1:
+            st.markdown(f"""
+            <div class="metric-card">
+                <div class="metric-label">Mejor Algoritmo</div>
+                <div class="metric-value" style="font-size: 1.25rem;">{best_clf['Algoritmo']}</div>
+                <div class="metric-sub">Mayor F1-Score</div>
+            </div>
+            """, unsafe_allow_html=True)
+        with b2:
+            st.markdown(f"""
+            <div class="metric-card">
+                <div class="metric-label">Accuracy</div>
+                <div class="metric-value">{best_clf['Accuracy'] * 100:.2f}%</div>
+                <div class="metric-sub">Exactitud global</div>
+            </div>
+            """, unsafe_allow_html=True)
+        with b3:
+            st.markdown(f"""
+            <div class="metric-card">
+                <div class="metric-label">Precision</div>
+                <div class="metric-value">{best_clf['Precision'] * 100:.2f}%</div>
+                <div class="metric-sub">Fiabilidad de positivos</div>
+            </div>
+            """, unsafe_allow_html=True)
+        with b4:
+            st.markdown(f"""
+            <div class="metric-card">
+                <div class="metric-label">Recall / Sensibilidad</div>
+                <div class="metric-value">{best_clf['Recall'] * 100:.2f}%</div>
+                <div class="metric-sub">Detección de clase positiva</div>
+            </div>
+            """, unsafe_allow_html=True)
+            
+        st.markdown("<br>", unsafe_allow_html=True)
+        
+        # Tabla Comparativa de Rendimiento Preliminar
+        st.markdown("### 📊 4. Tabla Comparativa de Rendimiento Preliminar")
+        st.dataframe(
+            df_comp_clf,
+            use_container_width=True,
+            hide_index=True,
+            column_config={
+                "Accuracy": st.column_config.NumberColumn(format="%.4f"),
+                "Precision": st.column_config.NumberColumn(format="%.4f"),
+                "Recall": st.column_config.NumberColumn(format="%.4f"),
+                "F1-Score": st.column_config.NumberColumn(format="%.4f"),
+                "K-Fold CV F1 (Promedio)": st.column_config.NumberColumn(format="%.4f")
+            }
+        )
+        
+        # Gráfica de Radar o Barras para Comparar Métricas
+        fig_clf = px.bar(
+            df_comp_clf,
+            x='Algoritmo',
+            y=['Accuracy', 'Precision', 'Recall', 'F1-Score'],
+            barmode='group',
+            title='<b>Comparación Multimétrica de Modelos de Clasificación (Unidad 3)</b>',
+            template='plotly_dark',
+            color_discrete_sequence=['#38bdf8', '#34d399', '#fbbf24', '#f43f5e']
+        )
+        fig_clf.update_layout(
+            paper_bgcolor='rgba(15, 23, 42, 0.6)',
+            plot_bgcolor='rgba(15, 23, 42, 0.6)',
+            yaxis=dict(range=[0, 1.05]),
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+        )
+        st.plotly_chart(fig_clf, use_container_width=True)
+
