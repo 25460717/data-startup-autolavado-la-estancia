@@ -1,7 +1,9 @@
 import os
 import sqlite3
 import datetime
+import io
 from pathlib import Path
+import db_manager
 import pandas as pd
 import numpy as np
 import plotly.express as px
@@ -100,10 +102,56 @@ st.markdown("""
         margin-top: 4px;
     }
 
-    /* Botones POS y controles */
-    div.stButton > button {
-        border-radius: 10px;
+    /* Tarjetas de servicios POS y prevencion de cortes feos de texto */
+    .service-card {
+        background: rgba(30, 41, 59, 0.6);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 12px;
+        padding: 16px;
+        margin-bottom: 12px;
+        transition: transform 0.15s ease, border-color 0.15s ease;
+    }
+    .service-card:hover {
+        border-color: rgba(56, 189, 248, 0.4);
+    }
+    .service-title {
+        font-size: 1.05rem !important;
+        font-weight: 700 !important;
+        color: #f8fafc !important;
+        word-break: normal !important;
+        overflow-wrap: normal !important;
+        white-space: normal !important;
+        hyphens: none !important;
+        line-height: 1.35 !important;
+        min-height: 2.7rem;
+        display: flex;
+        align-items: center;
+    }
+    .service-desc {
+        font-size: 0.82rem !important;
+        color: #94a3b8 !important;
+        line-height: 1.3 !important;
+        min-height: 2.4rem;
+        word-break: normal !important;
+        hyphens: none !important;
+    }
+    .badge-category {
+        display: inline-block;
+        padding: 3px 8px;
+        font-size: 0.72rem;
         font-weight: 600;
+        border-radius: 6px;
+        background: rgba(56, 189, 248, 0.15);
+        color: #38bdf8;
+        margin-bottom: 6px;
+    }
+    /* Botones POS y controles - forzar legibilidad y evitar saltos de silaba */
+    div.stButton > button {
+        border-radius: 10px !important;
+        font-weight: 600 !important;
+        white-space: nowrap !important;
+        word-break: keep-all !important;
+        hyphens: none !important;
         transition: all 0.2s ease;
     }
 </style>
@@ -125,13 +173,13 @@ EXCEL_CANDIDATES = [
 ]
 
 CATALOGO_SERVICIOS = [
-    {"tipo": "Taxi", "precio": 70, "icono": "🚕", "desc": "Lavado básico servicio público"},
-    {"tipo": "Carro - Servicio Normal", "precio": 90, "icono": "🚗", "desc": "Exterior + aspirado interior estándar"},
-    {"tipo": "Carro - Servicio Detallado", "precio": 110, "icono": "✨", "desc": "Cera líquida + llantas + aromatizante"},
-    {"tipo": "Camioneta - Servicio Normal", "precio": 110, "icono": "🚙", "desc": "Lavado completo para SUV/Pick-up"},
-    {"tipo": "Camioneta - Servicio Detallado", "precio": 130, "icono": "🌟", "desc": "Detallado premium para SUV/Pick-up"},
-    {"tipo": "Cuatrimoto", "precio": 350, "icono": "🏍️", "desc": "Desengrase profundo y lavado todoterreno"},
-    {"tipo": "Can-Am", "precio": 400, "icono": "🚜", "desc": "Lavado exhaustivo alta demanda Off-Road"}
+    {"tipo": "Taxi", "precio": 70, "icono": "🚕", "categoria": "Taxi / Servicio Público", "desc": "Lavado básico exterior e interior servicio público"},
+    {"tipo": "Carro - Servicio Normal", "precio": 90, "icono": "🚗", "categoria": "Carro", "desc": "Exterior + aspirado interior estándar"},
+    {"tipo": "Carro - Servicio Detallado", "precio": 110, "icono": "✨", "categoria": "Carro", "desc": "Cera líquida + abrillantador llantas + aromatizante"},
+    {"tipo": "Camioneta - Servicio Normal", "precio": 110, "icono": "🚙", "categoria": "Camioneta", "desc": "Lavado completo para SUV / Pick-up"},
+    {"tipo": "Camioneta - Servicio Detallado", "precio": 130, "icono": "🌟", "categoria": "Camioneta", "desc": "Detallado premium + abrillantador para SUV/Pick-up"},
+    {"tipo": "Cuatrimoto", "precio": 350, "icono": "🏍️", "categoria": "Especial / Motos", "desc": "Desengrase profundo a presión todoterreno"},
+    {"tipo": "Can-Am", "precio": 400, "icono": "🚜", "categoria": "Especial / Off-Road", "desc": "Lavado exhaustivo alta demanda Off-Road"}
 ]
 
 DIAS_SEMANA_MAP = {
@@ -224,6 +272,7 @@ def initialize_database():
 
 # Inicializar Base de Datos
 initialize_database()
+db_manager.init_tables()
 
 # ==========================================
 # FUNCIONES DE CONSULTA Y NEGOCIO
@@ -629,13 +678,33 @@ with st.sidebar:
         index=0
     )
     
+    db_status = db_manager.get_db_status()
     st.markdown("---")
+    st.markdown("**Estado de Conexión:**")
+    st.markdown(f"""
+    <div style='background: rgba(30, 41, 59, 0.75); border: 1px solid {db_status["badge_color"]}; border-radius: 8px; padding: 10px 12px; margin-bottom: 10px;'>
+        <div style='font-weight: 700; color: {db_status["badge_color"]};'>{db_status["icon"]} {db_status["status_label"]}</div>
+        <div style='font-size: 0.76rem; color: #94a3b8; margin-top: 4px;'>{db_status["engine"]}</div>
+    </div>
+    """, unsafe_allow_html=True)
+    with st.expander("☁️ Persistencia Nube (Supabase)"):
+        st.markdown(f"""
+        **Modo de Guardado:**
+        {db_status["description"]}
+        
+        Para guardar en la nube sin depender del disco de Streamlit:
+        1. Crea tu cuenta en [supabase.com](https://supabase.com)
+        2. En tus `st.secrets` agrega:
+        ```toml
+        SUPABASE_URL = "https://tu-proyecto.supabase.co"
+        SUPABASE_KEY = "tu-clave-anon"
+        ```
+        """)
     st.markdown("""
-    <div style='background-color: rgba(255,255,255,0.03); padding: 12px; border-radius: 8px; font-size: 0.8rem; color: #94a3b8;'>
+    <div style='background-color: rgba(255,255,255,0.03); padding: 10px 12px; border-radius: 8px; font-size: 0.78rem; color: #94a3b8;'>
         <strong>📍 Sucursal:</strong> La Estancia<br>
-        <strong>⚡ Base de Datos:</strong> SQLite WAL<br>
-        <strong>🤖 ML Engine:</strong> Scikit-Learn RF<br>
-        <strong>🟢 Sistema:</strong> Operativo
+        <strong>🤖 ML Engine:</strong> Scikit-Learn + Statsmodels<br>
+        <strong>🟢 Sistema:</strong> 100% Operativo
     </div>
     """, unsafe_allow_html=True)
 
@@ -646,88 +715,249 @@ if pagina == "Registro de Ventas (Caja POS)":
     st.markdown("""
     <div class="hero-header">
         <div class="hero-title">⚡ Punto de Venta Express</div>
-        <div class="hero-subtitle">Registro instantáneo de servicios de lavado y control de caja en vivo</div>
+        <div class="hero-subtitle">Registro instantáneo de servicios de lavado, cobro multimétodo y corte de caja en tiempo real</div>
     </div>
     """, unsafe_allow_html=True)
     
     st.markdown("### 🛒 Registrar Servicio al Instante")
-    st.caption("Selecciona el tipo de servicio para emitir el ticket consecutivo y guardarlo automáticamente en la base de datos.")
+    st.caption("Elige el método de pago y haz clic en el servicio para emitir el ticket con autoguardado inmediato en la base de datos.")
     
-    col_grid1, col_grid2, col_grid3, col_grid4 = st.columns(4)
-    cols = [col_grid1, col_grid2, col_grid3, col_grid4]
+    # Selector de opciones rápidas de cobro
+    c_pay1, c_pay2 = st.columns([1.3, 1])
+    with c_pay1:
+        metodo_pago_sel = st.radio(
+            "Método de Pago para este cobro:",
+            ["💵 Efectivo (Predeterminado)", "📱 Transferencia", "💳 Tarjeta"],
+            horizontal=True,
+            index=0,
+            help="Selecciona cómo pagó el cliente antes de registrar el servicio."
+        )
+    with c_pay2:
+        notas_placa_input = st.text_input(
+            "Placa o descripción del auto (opcional):",
+            placeholder="Ej: JRD-4521 o Versa blanco",
+            help="Puedes anotar la placa o modelo para mayor control."
+        )
+        
+    metodo_limpio = "Efectivo"
+    if "Transferencia" in metodo_pago_sel:
+        metodo_limpio = "Transferencia"
+    elif "Tarjeta" in metodo_pago_sel:
+        metodo_limpio = "Tarjeta"
+        
+    # Grid de tarjetas de cobro organizadas (3 columnas amplias para evitar corte de texto)
+    cols = st.columns(3)
     
     for idx, item in enumerate(CATALOGO_SERVICIOS):
-        with cols[idx % 4]:
+        with cols[idx % 3]:
             with st.container(border=True):
-                st.markdown(f"#### {item['icono']} {item['tipo']}")
-                st.markdown(f"<div style='font-size: 1.5rem; font-weight: 800; color: #38bdf8; margin-bottom: 4px;'>${item['precio']} <span style='font-size: 0.85rem; color: #94a3b8;'>MXN</span></div>", unsafe_allow_html=True)
-                st.caption(item['desc'])
-                if st.button(f"Cobrar ${item['precio']}", key=f"btn_pos_{idx}", use_container_width=True, type="primary" if "Detallado" in item['tipo'] else "secondary"):
-                    tkt_id, f_val, h_val = registrar_venta(item['tipo'], item['precio'])
-                    st.toast(f"✅ ¡Ticket {tkt_id} registrado con éxito! (${item['precio']} MXN)", icon="🎉")
-                    st.success(f"**Ticket Emitido Exitosamente:** `{tkt_id}` | Servicio: **{item['tipo']}** | Monto: **${item['precio']} MXN** | Hora: **{h_val}**")
-    
+                st.markdown(f"<span class='badge-category'>{item.get('categoria', 'General')}</span>", unsafe_allow_html=True)
+                st.markdown(f"<div class='service-title'>{item['icono']} {item['tipo']}</div>", unsafe_allow_html=True)
+                st.markdown(f"<div style='font-size: 1.6rem; font-weight: 800; color: #38bdf8; margin: 4px 0 8px 0;'>${item['precio']} <span style='font-size: 0.85rem; color: #94a3b8;'>MXN</span></div>", unsafe_allow_html=True)
+                st.markdown(f"<div class='service-desc'>{item['desc']}</div>", unsafe_allow_html=True)
+                
+                btn_label = f"⚡ Cobrar ${item['precio']} ({metodo_limpio})"
+                es_destacado = "Detallado" in item['tipo'] or "Off-Road" in item.get('desc', '')
+                if st.button(btn_label, key=f"btn_pos_{idx}", use_container_width=True, type="primary" if es_destacado else "secondary"):
+                    nuevo_tkt = db_manager.registrar_ticket(
+                        servicio=item['tipo'],
+                        categoria_vehiculo=item.get('categoria', 'General'),
+                        precio_mxn=item['precio'],
+                        metodo_pago=metodo_limpio,
+                        notas_placa=notas_placa_input
+                    )
+                    st.toast(f"✅ ¡Ticket {nuevo_tkt['folio']} registrado con éxito! (${item['precio']} MXN)", icon="🎉")
+                    st.rerun()
+                    
     st.markdown("---")
     
-    df_hoy = get_ventas_hoy()
-    total_lavados_hoy = len(df_hoy)
-    total_ingresos_hoy = df_hoy['precio'].sum() if not df_hoy.empty else 0.0
-    servicio_top_hoy = df_hoy['tipo_servicio'].mode()[0] if not df_hoy.empty else "Sin ventas aún"
+    # Consulta de tickets del día en tiempo real
+    df_hoy = db_manager.get_tickets_dia()
+    corte_hoy = db_manager.get_corte_resumen(df_hoy)
     
     st.markdown("### 📊 Métricas del Día en Vivo")
-    kpi_col1, kpi_col2, kpi_col3 = st.columns(3)
+    kpi_col1, kpi_col2, kpi_col3, kpi_col4 = st.columns(4)
     
     with kpi_col1:
         st.markdown(f"""
         <div class="metric-card">
             <div class="metric-label">Autos Lavados Hoy</div>
-            <div class="metric-value">{total_lavados_hoy:,}</div>
-            <div class="metric-sub">📅 Fecha: {datetime.date.today().strftime('%d/%m/%Y')}</div>
+            <div class="metric-value">{corte_hoy['total_lavados']:,}</div>
+            <div class="metric-sub">📅 {datetime.date.today().strftime('%d/%m/%Y')} (Solo pagados)</div>
         </div>
         """, unsafe_allow_html=True)
         
     with kpi_col2:
         st.markdown(f"""
         <div class="metric-card">
-            <div class="metric-label">Ingresos del Día</div>
-            <div class="metric-value">${total_ingresos_hoy:,.2f}</div>
-            <div class="metric-sub">💳 Recaudación acumulada</div>
+            <div class="metric-label">Ingresos Netos del Día</div>
+            <div class="metric-value">${corte_hoy['total_ingresos_netos']:,.2f}</div>
+            <div class="metric-sub">💰 Recaudación neta en caja</div>
         </div>
         """, unsafe_allow_html=True)
         
     with kpi_col3:
+        if not df_hoy.empty and corte_hoy['total_lavados'] > 0:
+            df_pagados_sub = df_hoy[df_hoy['estado'] == 'Pagado']
+            servicio_top_hoy = df_pagados_sub['servicio'].mode()[0] if not df_pagados_sub.empty else "Sin ventas aún"
+        else:
+            servicio_top_hoy = "Sin ventas aún"
         st.markdown(f"""
         <div class="metric-card">
-            <div class="metric-label">Servicio Más Pedido Hoy</div>
-            <div class="metric-value" style="font-size: 1.25rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="{servicio_top_hoy}">{servicio_top_hoy}</div>
+            <div class="metric-label">Servicio Más Pedido</div>
+            <div class="metric-value" style="font-size: 1.15rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="{servicio_top_hoy}">{servicio_top_hoy}</div>
             <div class="metric-sub">⭐ Preferencia de clientes</div>
         </div>
         """, unsafe_allow_html=True)
         
+    with kpi_col4:
+        st.markdown(f"""
+        <div class="metric-card">
+            <div class="metric-label">Tickets Anulados</div>
+            <div class="metric-value" style="color: #f87171;">{corte_hoy['total_cancelados_num']}</div>
+            <div class="metric-sub">${corte_hoy['total_cancelados_monto']:,.2f} MXN descontados</div>
+        </div>
+        """, unsafe_allow_html=True)
+        
+    # Desglose de corte de caja por método de pago
+    st.markdown("#### 💳 Desglose de Corte por Método de Pago")
+    met_col1, met_col2, met_col3 = st.columns(3)
+    ef_info = corte_hoy['por_metodo']['Efectivo']
+    tr_info = corte_hoy['por_metodo']['Transferencia']
+    tj_info = corte_hoy['por_metodo']['Tarjeta']
+    
+    with met_col1:
+        st.info(f"💵 **Efectivo:** ${ef_info['monto']:,.2f} MXN ({ef_info['conteo']} lavados)")
+    with met_col2:
+        st.info(f"📱 **Transferencia:** ${tr_info['monto']:,.2f} MXN ({tr_info['conteo']} lavados)")
+    with met_col3:
+        st.info(f"💳 **Tarjeta:** ${tj_info['monto']:,.2f} MXN ({tj_info['conteo']} lavados)")
+        
+    # Anulación / Cancelación de tickets con auditoría
+    with st.expander("⚠️ Anular / Cancelar Ticket por Error de Captura"):
+        st.caption("Si se capturó un ticket incorrecto o el cliente canceló el servicio, puedes anularlo aquí. No se borra del historial para conservar la auditoría, pero se descuenta automáticamente del total neto.")
+        df_activos = df_hoy[df_hoy['estado'] == 'Pagado'] if not df_hoy.empty else pd.DataFrame()
+        if not df_activos.empty:
+            opciones_anular = [
+                f"{row['folio']} | {str(row['fecha_hora']).split(' ')[1] if ' ' in str(row['fecha_hora']) else row['fecha_hora']} | {row['servicio']} | ${row['precio_mxn']} MXN ({row['metodo_pago']})"
+                for _, row in df_activos.iterrows()
+            ]
+            ticket_sel = st.selectbox("Selecciona el ticket que deseas anular:", opciones_anular)
+            folio_sel = ticket_sel.split(" | ")[0]
+            col_mot1, col_mot2 = st.columns([2, 1])
+            with col_mot1:
+                motivo_anular = st.text_input("Motivo de cancelación:", placeholder="Ej: Error al seleccionar servicio / Cliente se retiró / Cobro duplicado")
+            with col_mot2:
+                st.write("")
+                st.write("")
+                if st.button("🚨 Confirmar Anulación", type="primary", use_container_width=True):
+                    if not motivo_anular.strip():
+                        st.warning("Por favor escribe un motivo para anular el ticket.")
+                    else:
+                        db_manager.cancelar_ticket(folio_sel, motivo_anular)
+                        st.toast(f"Ticket {folio_sel} anulado con éxito.", icon="🚫")
+                        st.rerun()
+        else:
+            st.info("No hay tickets activos para anular el día de hoy.")
+            
+    # Tabla de tickets registrados hoy
     st.markdown("### 📋 Tickets Registrados Hoy")
     if not df_hoy.empty:
-        df_display = df_hoy.rename(columns={
-            'id_ticket': 'ID Ticket',
-            'fecha': 'Fecha',
-            'dia_semana': 'Día',
-            'hora': 'Hora',
-            'tipo_servicio': 'Servicio / Vehículo',
-            'precio': 'Precio ($ MXN)'
-        })
+        df_mostrar = df_hoy.copy()
+        columnas_deseadas = [
+            'folio', 'fecha_hora', 'servicio', 'categoria_vehiculo',
+            'precio_mxn', 'metodo_pago', 'estado', 'notas_placa', 'motivo_cancelacion'
+        ]
+        cols_presentes = [c for c in columnas_deseadas if c in df_mostrar.columns]
+        df_mostrar = df_mostrar[cols_presentes]
+        
+        nombres_columnas = {
+            'folio': 'Folio',
+            'fecha_hora': 'Fecha y Hora',
+            'servicio': 'Servicio',
+            'categoria_vehiculo': 'Categoría',
+            'precio_mxn': 'Precio ($ MXN)',
+            'metodo_pago': 'Método Pago',
+            'estado': 'Estado',
+            'notas_placa': 'Placa / Notas',
+            'motivo_cancelacion': 'Motivo Cancelación'
+        }
+        df_mostrar = df_mostrar.rename(columns=nombres_columnas)
+        
         st.dataframe(
-            df_display,
+            df_mostrar,
             use_container_width=True,
             hide_index=True,
             column_config={
-                "Precio ($ MXN)": st.column_config.NumberColumn(format="$%.2f")
+                "Precio ($ MXN)": st.column_config.NumberColumn(format="$%.2f"),
+                "Estado": st.column_config.TextColumn(help="Pagado o Cancelado")
             }
         )
+        
+        # Botones de exportación del día
+        col_exp1, col_exp2 = st.columns(2)
+        with col_exp1:
+            csv_bytes = df_mostrar.to_csv(index=False).encode('utf-8-sig')
+            st.download_button(
+                "📥 Descargar Corte de Hoy en CSV",
+                data=csv_bytes,
+                file_name=f"corte_caja_{datetime.date.today().strftime('%Y%m%d')}.csv",
+                mime="text/csv",
+                use_container_width=True
+            )
+        with col_exp2:
+            buf_excel = io.BytesIO()
+            with pd.ExcelWriter(buf_excel, engine='openpyxl') as writer:
+                df_mostrar.to_excel(writer, index=False, sheet_name=f"Corte_{datetime.date.today().strftime('%Y%m%d')}")
+            st.download_button(
+                "📊 Descargar Corte de Hoy en Excel (.xlsx)",
+                data=buf_excel.getvalue(),
+                file_name=f"corte_caja_{datetime.date.today().strftime('%Y%m%d')}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                use_container_width=True
+            )
     else:
-        st.info("ℹ️ No hay tickets registrados el día de hoy todavía. Utiliza los botones superiores para registrar el primer servicio.")
+        st.info("ℹ️ No hay tickets registrados el día de hoy todavía. Utiliza las tarjetas superiores para registrar el primer cobro.")
+        
+    # Sección de Corte por Rango de Fechas
+    with st.expander("📅 Consultar y Exportar Corte por Rango de Fechas (Historial de Caja)"):
+        st.caption("Consulta cualquier período anterior para auditar ingresos, revisar métodos de pago y descargar el reporte completo a Excel o CSV.")
+        c_r1, c_r2 = st.columns(2)
+        with c_r1:
+            f_inicio = st.date_input("Fecha Desde:", value=datetime.date.today() - datetime.timedelta(days=7), key="corte_rango_inicio")
+        with c_r2:
+            f_fin = st.date_input("Fecha Hasta:", value=datetime.date.today(), key="corte_rango_fin")
+            
+        if f_inicio > f_fin:
+            st.error("La fecha de inicio no puede ser posterior a la fecha final.")
+        else:
+            s_ini = f_inicio.strftime("%Y-%m-%d")
+            s_fin = f_fin.strftime("%Y-%m-%d")
+            df_rango = db_manager.get_tickets_rango(s_ini, s_fin)
+            resumen_rango = db_manager.get_corte_resumen(df_rango)
+            
+            rg_col1, rg_col2, rg_col3 = st.columns(3)
+            with rg_col1:
+                st.metric("Autos Lavados en Período", f"{resumen_rango['total_lavados']:,}")
+            with rg_col2:
+                st.metric("Ingresos Netos del Período", f"${resumen_rango['total_ingresos_netos']:,.2f} MXN")
+            with rg_col3:
+                st.metric("Tickets Cancelados", f"{resumen_rango['total_cancelados_num']}")
+                
+            if not df_rango.empty:
+                buf_r = io.BytesIO()
+                with pd.ExcelWriter(buf_r, engine='openpyxl') as writer:
+                    df_rango.to_excel(writer, index=False, sheet_name="Reporte_Caja")
+                st.download_button(
+                    "📊 Descargar Reporte del Período en Excel (.xlsx)",
+                    data=buf_r.getvalue(),
+                    file_name=f"reporte_caja_{s_ini}_al_{s_fin}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                )
+            else:
+                st.info("No se encontraron tickets en el período seleccionado.")
 
-# ==========================================
-# PÁGINA 2: DASHBOARD ANALÍTICO HISTÓRICO
-# ==========================================
+
 elif pagina == "Dashboard Analítico Histórico":
     st.markdown("""
     <div class="hero-header">
@@ -1819,7 +2049,7 @@ elif pagina == "Entregable 3: Microservicios y Series de Tiempo (ARIMA/SARIMA)":
         - Reporte formal en `tests/REPORTE_PRUEBA_CARGA_LOCUST.md`: **1,482 peticiones**, **0% errores** y latencia p95 de **118 ms**.
 
         #### 📄 5. Justificación Técnica CPU vs. GPU (`docs/`)
-        - Documento formal en `docs/REPORTE_TECNICO_E3_ARQUITECTURA.md`: demostración de que la inferencia de datos tabulares y SARIMA sobre CPU x86-64 toma menos de 80 ms, reduciendo costos operativos de \$400 USD/mes (GPU) a menos de \$15 USD/mes (CPU Serverless).
+        - Documento formal en `docs/REPORTE_TECNICO_E3_ARQUITECTURA.md`: demostración de que la inferencia de datos tabulares y SARIMA sobre CPU x86-64 toma menos de 80 ms, reduciendo costos operativos de $400 USD/mes (GPU) a menos de $15 USD/mes (CPU Serverless).
         """)
 
 

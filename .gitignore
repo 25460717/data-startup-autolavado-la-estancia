@@ -19,6 +19,12 @@ notebooks/*.csv
 data/raw/*
 !data/raw/.gitkeep
 
+# Secretos y credenciales de nube
+.env
+.env.local
+.streamlit/secrets.toml
+services/tablero/.streamlit/secrets.toml
+
 # Base de datos SQLite del tablero: PERMITIDA para despliegue en la nube
 !services/tablero/autolavado.db
 
