@@ -1066,26 +1066,26 @@ elif pagina == "Dashboard Analítico Histórico":
     
     with row1_c1:
         monthly_revenue = filtered_df.groupby('year_month')['precio'].sum().reset_index()
-        fig_evolucion = px.line(
+        fig_evolucion = px.area(
             monthly_revenue,
             x='year_month',
             y='precio',
-            title='<b>Evolución de Ingresos Mensuales Históricos</b>',
-            labels={'year_month': 'Mes y Año', 'precio': 'Ingresos ($ MXN)'},
+            title='<b>📈 Ganancias Mes por Mes (Crecimiento del Negocio)</b>',
+            labels={'year_month': 'Fecha', 'precio': 'Dinero Ganado ($ MXN)'},
             template='plotly_dark'
         )
         fig_evolucion.update_traces(
             line=dict(color='#38bdf8', width=3),
-            mode='lines+markers',
-            marker=dict(size=4)
+            fillcolor='rgba(56, 189, 248, 0.25)',
+            hovertemplate='%{x|%B %Y}<br>Ganancia total: $%{y:,.2f} MXN<extra></extra>'
         )
         fig_evolucion.update_layout(
             paper_bgcolor='rgba(15, 23, 42, 0.6)',
             plot_bgcolor='rgba(15, 23, 42, 0.6)',
-            hovermode='x unified',
             margin=dict(l=40, r=20, t=50, b=40)
         )
         st.plotly_chart(fig_evolucion, use_container_width=True)
+        st.caption("💡 Muestra con claridad cómo ha ido creciendo el dinero recaudado por el autolavado a lo largo del tiempo.")
         
     with row1_c2:
         day_counts = filtered_df['dia_semana'].value_counts().reindex(dias_ordenados, fill_value=0).reset_index()
@@ -1095,14 +1095,18 @@ elif pagina == "Dashboard Analítico Histórico":
             day_counts,
             x='dia_semana',
             y='total_vehiculos',
-            title='<b>Afluencia de Vehículos por Día de la Semana</b>',
-            labels={'dia_semana': 'Día', 'total_vehiculos': 'Total de Vehículos'},
+            title='<b>🚗 ¿Qué días de la semana llega más trabajo?</b>',
+            labels={'dia_semana': 'Día de la Semana', 'total_vehiculos': 'Total de Autos'},
             text='total_vehiculos',
             template='plotly_dark',
             color='total_vehiculos',
-            color_continuous_scale='Blues'
+            color_continuous_scale='Teal'
         )
-        fig_barras_dia.update_traces(texttemplate='%{text:,}', textposition='outside')
+        fig_barras_dia.update_traces(
+            texttemplate='%{text:,} autos',
+            textposition='outside',
+            hovertemplate='%{x}<br>Total lavados: %{y:,} autos<extra></extra>'
+        )
         fig_barras_dia.update_layout(
             paper_bgcolor='rgba(15, 23, 42, 0.6)',
             plot_bgcolor='rgba(15, 23, 42, 0.6)',
@@ -1110,36 +1114,49 @@ elif pagina == "Dashboard Analítico Histórico":
             margin=dict(l=40, r=20, t=50, b=40)
         )
         st.plotly_chart(fig_barras_dia, use_container_width=True)
+        st.caption("💡 Permite ver fácilmente qué días se llena más el negocio para tener a todos los lavadores activos.")
         
     row2_c1, row2_c2 = st.columns([1.3, 1])
     
     with row2_c1:
-        heatmap_data = filtered_df.pivot_table(
-            index='dia_semana',
-            columns='hora_num',
-            values='id_ticket',
-            aggfunc='count',
-            fill_value=0
-        )
-        heatmap_data = heatmap_data.reindex(dias_ordenados, fill_value=0)
-        all_hours = sorted(heatmap_data.columns)
+        # Gráfica de barras directa y fácil de entender por hora del día
+        hora_counts = filtered_df['hora_num'].value_counts().sort_index().reset_index()
+        hora_counts.columns = ['hora_num', 'total_vehiculos']
         
-        fig_heatmap = px.imshow(
-            heatmap_data,
-            labels=dict(x="Hora del Día (Formato 24h)", y="Día de la Semana", color="Vehículos"),
-            x=[f"{h:02d}:00" for h in all_hours],
-            y=dias_ordenados,
-            title='<b>Mapa de Calor de Horas Pico (Día vs. Hora del Día)</b>',
-            color_continuous_scale='Turbo',
+        def formato_hora_humana(h):
+            if h == 12:
+                return "12:00 PM (Mediodía)"
+            elif h > 12:
+                return f"{h-12}:00 PM"
+            else:
+                return f"{h}:00 AM"
+                
+        hora_counts['hora_texto'] = hora_counts['hora_num'].apply(formato_hora_humana)
+        
+        fig_horas = px.bar(
+            hora_counts,
+            x='hora_texto',
+            y='total_vehiculos',
+            title='<b>⏰ ¿A qué horas del día hay más clientes? (Horas Pico)</b>',
+            labels={'hora_texto': 'Hora del Día', 'total_vehiculos': 'Autos Lavados'},
+            text='total_vehiculos',
             template='plotly_dark',
-            aspect='auto'
+            color='total_vehiculos',
+            color_continuous_scale='Oranges'
         )
-        fig_heatmap.update_layout(
+        fig_horas.update_traces(
+            texttemplate='%{text:,}',
+            textposition='outside',
+            hovertemplate='Hora: %{x}<br>Total lavados: %{y:,} autos<extra></extra>'
+        )
+        fig_horas.update_layout(
             paper_bgcolor='rgba(15, 23, 42, 0.6)',
             plot_bgcolor='rgba(15, 23, 42, 0.6)',
+            showlegend=False,
             margin=dict(l=40, r=20, t=50, b=40)
         )
-        st.plotly_chart(fig_heatmap, use_container_width=True)
+        st.plotly_chart(fig_horas, use_container_width=True)
+        st.caption("💡 Las barras más altas indican los momentos con mayor fila en el autolavado (ideal para saber a qué hora no debe faltar personal).")
         
     with row2_c2:
         servicio_revenue = filtered_df.groupby('tipo_servicio')['precio'].sum().reset_index()
@@ -1147,7 +1164,7 @@ elif pagina == "Dashboard Analítico Histórico":
             servicio_revenue,
             names='tipo_servicio',
             values='precio',
-            title='<b>Participación de Ingresos por Tipo de Vehículo</b>',
+            title='<b>🥧 ¿De qué tipo de vehículos entra más dinero?</b>',
             hole=0.45,
             template='plotly_dark',
             color_discrete_sequence=px.colors.qualitative.Prism
@@ -1155,7 +1172,7 @@ elif pagina == "Dashboard Analítico Histórico":
         fig_pie.update_traces(
             textposition='inside',
             textinfo='percent+label',
-            hovertemplate='%{label}: $%{value:,.2f} MXN (%{percent})'
+            hovertemplate='%{label}<br>Aportó: $%{value:,.2f} MXN (%{percent})<extra></extra>'
         )
         fig_pie.update_layout(
             paper_bgcolor='rgba(15, 23, 42, 0.6)',
@@ -1164,6 +1181,7 @@ elif pagina == "Dashboard Analítico Histórico":
             margin=dict(l=20, r=20, t=50, b=40)
         )
         st.plotly_chart(fig_pie, use_container_width=True)
+        st.caption("💡 Proporción del dinero total que aportan los carros normales, taxis y camionetas.")
 
 # ==========================================
 # PÁGINA 3: PREDICCIÓN DE DEMANDA E INGRESOS (MACHINE LEARNING)
@@ -1267,18 +1285,20 @@ elif pagina == "Predicción de Demanda e Ingresos (Machine Learning)":
     df_fore = res_ml['df_forecast'].copy()
     df_fore['fecha'] = pd.to_datetime(df_fore['fecha'])
     
-    # Crear figura combinada
+    # Crear figura combinada sencilla y clara para cualquier persona
     fig_ml = go.Figure()
+    
+    unidad_texto = "autos" if target_mode == "vehiculos" else "pesos"
     
     # Serie Real Histórica (últimos 30 días)
     fig_ml.add_trace(go.Scatter(
         x=recent_real['fecha'],
         y=recent_real[target_mode],
         mode='lines+markers',
-        name='Demanda Real (Últimos 30 días)',
+        name='Lo que realmente se lavó (Mes pasado)',
         line=dict(color='#0284c7', width=3),
         marker=dict(size=6, color='#38bdf8'),
-        hovertemplate='%{x|%d/%m/%Y}<br>Real: %{y:.1f}'
+        hovertemplate=f'%{{x|%d/%m/%Y}}<br>Real: %{{y:.0f}} {unidad_texto}<extra></extra>'
     ))
     
     # Para unir visualmente la línea real con la predicción
@@ -1291,16 +1311,17 @@ elif pagina == "Predicción de Demanda e Ingresos (Machine Learning)":
         x=connect_dates,
         y=connect_vals,
         mode='lines+markers',
-        name=f'Pronóstico ML (+{dias_pronostico} días)',
+        name=f'Lo que esperamos que llegue (Próximos {dias_pronostico} días)',
         line=dict(color='#f59e0b', width=3, dash='dash'),
-        marker=dict(size=7, color='#fbbf24'),
-        hovertemplate='%{x|%d/%m/%Y}<br>Pronóstico: %{y:.1f}'
+        marker=dict(size=8, color='#fbbf24', symbol='diamond'),
+        hovertemplate=f'%{{x|%d/%m/%Y}}<br>Estimado: %{{y:.0f}} {unidad_texto}<extra></extra>'
     ))
     
+    etiqueta_eje = "Cantidad de Autos Estimados" if target_mode == "vehiculos" else "Dinero Estimado ($ MXN)"
     fig_ml.update_layout(
-        title=f"<b>Demanda Real Reciente y Pronóstico a {dias_pronostico} Días ({'Vehículos' if target_mode == 'vehiculos' else 'Ingresos $ MXN'})</b>",
+        title=f"<b>🔮 Lo que realmente pasó vs. Lo que se espera que llegue (Próximos {dias_pronostico} Días)</b>",
         xaxis_title="Fecha",
-        yaxis_title="Cantidad de Vehículos" if target_mode == "vehiculos" else "Ingresos ($ MXN)",
+        yaxis_title=etiqueta_eje,
         template='plotly_dark',
         paper_bgcolor='rgba(15, 23, 42, 0.6)',
         plot_bgcolor='rgba(15, 23, 42, 0.6)',
@@ -1309,6 +1330,7 @@ elif pagina == "Predicción de Demanda e Ingresos (Machine Learning)":
         margin=dict(l=40, r=30, t=60, b=40)
     )
     st.plotly_chart(fig_ml, use_container_width=True)
+    st.caption("💡 La línea azul muestra el historial real reciente. La línea naranja punteada con diamantes calcula cuántos autos o cuánto dinero se esperan recibir cada día para que el negocio esté preparado.")
     
     # -----------------
     # TABLA DE PRONÓSTICO Y DESCARGA CSV
@@ -1711,22 +1733,34 @@ elif pagina == "Avance 2: Modelos ML y Preprocesamiento":
             }
         )
         
-        # Gráfica Comparativa de Métricas
+        # Gráfica de calificación porcentual fácil de entender (0 a 100%)
+        df_comp_reg_show = df_comp_reg.copy()
+        df_comp_reg_show['Certeza del Modelo (%)'] = (df_comp_reg_show['R² Score'] * 100).round(1)
+        
         fig_comp = px.bar(
-            df_comp_reg,
+            df_comp_reg_show,
             x='Algoritmo',
-            y=['R² Score', 'K-Fold CV R² (Promedio)'],
-            barmode='group',
-            title='<b>Comparativa de Precisión R² (Test vs. K-Fold Cross Validation)</b>',
+            y='Certeza del Modelo (%)',
+            text='Certeza del Modelo (%)',
+            title='<b>🎯 ¿Qué tan certero y confiable es cada modelo matemático? (Calificación de 0 a 100%)</b>',
             template='plotly_dark',
-            color_discrete_sequence=['#38bdf8', '#a855f7']
+            color='Certeza del Modelo (%)',
+            color_continuous_scale='Blues'
+        )
+        fig_comp.update_traces(
+            texttemplate='%{text:.1f}%',
+            textposition='outside',
+            hovertemplate='%{x}<br>Calificación: %{y:.1f}% de certeza<extra></extra>'
         )
         fig_comp.update_layout(
             paper_bgcolor='rgba(15, 23, 42, 0.6)',
             plot_bgcolor='rgba(15, 23, 42, 0.6)',
-            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+            yaxis=dict(range=[0, 105]),
+            showlegend=False,
+            margin=dict(l=30, r=20, t=50, b=40)
         )
         st.plotly_chart(fig_comp, use_container_width=True)
+        st.caption("💡 Entre más alta esté la barra, más exacta y confiable es la estimación que hace ese modelo.")
         
     # ----------------------------------------------------
     # ENFOQUE 2: CLASIFICACIÓN (UNIDAD 3)
@@ -1820,23 +1854,34 @@ elif pagina == "Avance 2: Modelos ML y Preprocesamiento":
             }
         )
         
-        # Gráfica de Radar o Barras para Comparar Métricas
+        # Gráfica de porcentaje de aciertos fácil de entender
+        df_comp_clf_show = df_comp_clf.copy()
+        df_comp_clf_show['Porcentaje de Aciertos (%)'] = (df_comp_clf_show['Accuracy'] * 100).round(1)
+        
         fig_clf = px.bar(
-            df_comp_clf,
+            df_comp_clf_show,
             x='Algoritmo',
-            y=['Accuracy', 'Precision', 'Recall', 'F1-Score'],
-            barmode='group',
-            title='<b>Comparación Multimétrica de Modelos de Clasificación (Unidad 3)</b>',
+            y='Porcentaje de Aciertos (%)',
+            text='Porcentaje de Aciertos (%)',
+            title='<b>🎯 Porcentaje de Aciertos de Cada Modelo (¿Qué tan bien adivinan?)</b>',
             template='plotly_dark',
-            color_discrete_sequence=['#38bdf8', '#34d399', '#fbbf24', '#f43f5e']
+            color='Porcentaje de Aciertos (%)',
+            color_continuous_scale='Greens'
+        )
+        fig_clf.update_traces(
+            texttemplate='%{text:.1f}%',
+            textposition='outside',
+            hovertemplate='%{x}<br>Acierto general: %{y:.1f}% de las veces<extra></extra>'
         )
         fig_clf.update_layout(
             paper_bgcolor='rgba(15, 23, 42, 0.6)',
             plot_bgcolor='rgba(15, 23, 42, 0.6)',
-            yaxis=dict(range=[0, 1.05]),
-            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+            yaxis=dict(range=[0, 110]),
+            showlegend=False,
+            margin=dict(l=30, r=20, t=50, b=40)
         )
         st.plotly_chart(fig_clf, use_container_width=True)
+        st.caption("💡 Si un modelo tiene 85%, significa que de cada 100 clientes que llegan, adivina correctamente lo que van a pedir en 85 ocasiones.")
 
 # ==========================================
 # PÁGINA 6: ENTREGABLE 3: MICROSERVICIOS Y SERIES DE TIEMPO (ARIMA/SARIMA)
@@ -1897,7 +1942,7 @@ elif pagina == "Entregable 3: Microservicios y Series de Tiempo (ARIMA/SARIMA)":
                     'lim_sup': np.maximum(0.0, conf_s_int.iloc[:, 1].values).round(1)
                 })
                 
-                # Gráfica con banda de confianza Plotly
+                # Gráfica clara con banda normal de variación
                 fig_band = go.Figure()
                 
                 # Últimos 30 días reales
@@ -1906,8 +1951,10 @@ elif pagina == "Entregable 3: Microservicios y Series de Tiempo (ARIMA/SARIMA)":
                     x=recent_s['fecha'],
                     y=recent_s['vehiculos'],
                     mode='lines+markers',
-                    name='Histórico Real',
-                    line=dict(color='#38bdf8', width=2.5)
+                    name='Autos reales de días anteriores',
+                    line=dict(color='#38bdf8', width=2.5),
+                    marker=dict(size=5),
+                    hovertemplate='%{x|%d/%m/%Y}<br>Real: %{y} autos<extra></extra>'
                 ))
                 
                 # Banda superior e inferior
@@ -1917,7 +1964,8 @@ elif pagina == "Entregable 3: Microservicios y Series de Tiempo (ARIMA/SARIMA)":
                     mode='lines',
                     line=dict(width=0),
                     showlegend=False,
-                    name='Límite Sup 95%'
+                    name='Máximo esperado',
+                    hovertemplate='Máximo esperado: %{y} autos en día lleno<extra></extra>'
                 ))
                 fig_band.add_trace(go.Scatter(
                     x=df_sarima_res['fecha'],
@@ -1926,7 +1974,8 @@ elif pagina == "Entregable 3: Microservicios y Series de Tiempo (ARIMA/SARIMA)":
                     line=dict(width=0),
                     fill='tonexty',
                     fillcolor='rgba(251, 191, 36, 0.2)',
-                    name='Banda de Confianza 95%'
+                    name='Margen normal (mínimo a máximo)',
+                    hovertemplate='Mínimo esperado: %{y} autos en día flojo<extra></extra>'
                 ))
                 
                 # Línea central de predicción
@@ -1935,20 +1984,24 @@ elif pagina == "Entregable 3: Microservicios y Series de Tiempo (ARIMA/SARIMA)":
                     y=df_sarima_res['prediccion'],
                     mode='lines+markers',
                     line=dict(color='#f59e0b', width=3),
-                    name='Pronóstico SARIMA'
+                    marker=dict(size=7, color='#fbbf24'),
+                    name='Pronóstico más probable',
+                    hovertemplate='%{x|%d/%m/%Y}<br>Esperado: %{y} autos<extra></extra>'
                 ))
                 
                 fig_band.update_layout(
-                    title=f"<b>Pronóstico SARIMA a {dias_sarima} Días con Intervalo de Confianza del 95%</b>",
+                    title=f"<b>📅 Pronóstico Diario para los Próximos {dias_sarima} Días (Con Margen Esperado)</b>",
                     xaxis_title="Fecha",
-                    yaxis_title="Vehículos Diarios Estimados",
+                    yaxis_title="Autos que se esperan por día",
                     template='plotly_dark',
                     paper_bgcolor='rgba(15, 23, 42, 0.6)',
                     plot_bgcolor='rgba(15, 23, 42, 0.6)',
                     margin=dict(l=30, r=20, t=50, b=30),
-                    hovermode='x unified'
+                    hovermode='x unified',
+                    legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
                 )
                 st.plotly_chart(fig_band, use_container_width=True)
+                st.caption("💡 La línea naranja indica cuántos autos es casi seguro que lleguen cada día. La zona dorada sombreada muestra el margen normal entre un día flojo y un día muy concurrido.")
                 
         st.markdown("#### 📋 Detalle de la Banda de Confianza y Pronóstico Diario")
         st.dataframe(
@@ -2008,10 +2061,10 @@ elif pagina == "Entregable 3: Microservicios y Series de Tiempo (ARIMA/SARIMA)":
                     fig_cm = px.imshow(
                         cm,
                         text_auto=True,
-                        labels=dict(x="Predicción", y="Real", color="Casos"),
-                        x=['Normal', 'Detallado'],
-                        y=['Normal', 'Detallado'],
-                        title=f"<b>{c_name}</b>",
+                        labels=dict(x="Lo que predijo el modelo", y="Lo que el cliente pidió realmente", color="Clientes"),
+                        x=['Pidió Normal', 'Pidió Detallado'],
+                        y=['Era Normal', 'Era Detallado'],
+                        title=f"<b>🎯 Aciertos de {c_name}</b>",
                         color_continuous_scale='Blues',
                         template='plotly_dark'
                     )
@@ -2021,6 +2074,7 @@ elif pagina == "Entregable 3: Microservicios y Series de Tiempo (ARIMA/SARIMA)":
                         margin=dict(l=20, r=20, t=40, b=20)
                     )
                     st.plotly_chart(fig_cm, use_container_width=True)
+                    st.caption("💡 Casillas oscuras = Aciertos directos.")
                     
     with tab_e3_3:
         st.markdown("### ☁️ Arquitectura de Microservicios, Docker, Kubernetes y Terraform (E3)")
