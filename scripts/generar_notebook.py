@@ -118,26 +118,36 @@ Cumpliendo con los requisitos obligatorios:
 - **Variables explicativas:** Se cuenta con más de **12 variables explicativas** (día de semana, mes, día del mes, turno, es fin de semana, es quincena, probabilidad de lluvia, categoría de vehículo, método de pago, promedios móviles y rezagos de demanda).
 """)
 
-add_code("""# Carga de datasets enriquecidos
-# Detección dinámica y robusta de la ruta de datos
+add_code("""# Carga de datasets enriquecidos (Compatible con Google Colab y Local)
+import urllib.request
+
+# 1. Rutas locales posibles
 candidatos_data = [
     os.path.join("data", "autolavado_enriquecido.csv"),
     os.path.join("..", "data", "autolavado_enriquecido.csv"),
-    os.path.join(os.path.dirname(os.path.abspath("__file__")), "data", "autolavado_enriquecido.csv"),
-    os.path.join(os.path.dirname(os.path.abspath("__file__")), "..", "data", "autolavado_enriquecido.csv"),
+    "autolavado_enriquecido.csv",
     "C:/Users/josea/data-startup-autolavado-la-estancia/data/autolavado_enriquecido.csv"
 ]
+
 tickets_path = None
 for c in candidatos_data:
     if os.path.exists(c):
         tickets_path = c
-        data_dir = os.path.dirname(c)
         break
 
+# 2. Si se ejecuta en Google Colab o no se encuentran los archivos en disco, descargarlos de GitHub
 if not tickets_path:
-    raise FileNotFoundError("No se encontró el archivo 'autolavado_enriquecido.csv'.")
-
-daily_path = os.path.join(data_dir, "demanda_diaria_enriquecida.csv")
+    print("Detectado entorno en la nube (Google Colab). Descargando datasets desde GitHub...")
+    base_raw_url = "https://raw.githubusercontent.com/25460717/data-startup-autolavado-la-estancia/main/data"
+    urllib.request.urlretrieve(f"{base_raw_url}/autolavado_enriquecido.csv", "autolavado_enriquecido.csv")
+    urllib.request.urlretrieve(f"{base_raw_url}/demanda_diaria_enriquecida.csv", "demanda_diaria_enriquecida.csv")
+    tickets_path = "autolavado_enriquecido.csv"
+    daily_path = "demanda_diaria_enriquecida.csv"
+else:
+    dir_base = os.path.dirname(tickets_path)
+    daily_path = os.path.join(dir_base, "demanda_diaria_enriquecida.csv")
+    if not os.path.exists(daily_path):
+        daily_path = "demanda_diaria_enriquecida.csv"
 
 df_tickets = pd.read_csv(tickets_path)
 df_daily = pd.read_csv(daily_path)
