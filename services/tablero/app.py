@@ -174,10 +174,10 @@ EXCEL_CANDIDATES = [
 
 CATALOGO_SERVICIOS = [
     {"tipo": "Taxi", "precio": 70, "icono": "🚕", "categoria": "Taxi / Servicio Público", "desc": "Lavado básico exterior e interior servicio público"},
-    {"tipo": "Carro - Servicio Normal", "precio": 90, "icono": "🚗", "categoria": "Carro", "desc": "Exterior + aspirado interior estándar"},
-    {"tipo": "Carro - Servicio Detallado", "precio": 110, "icono": "✨", "categoria": "Carro", "desc": "Cera líquida + abrillantador llantas + aromatizante"},
-    {"tipo": "Camioneta - Servicio Normal", "precio": 110, "icono": "🚙", "categoria": "Camioneta", "desc": "Lavado completo para SUV / Pick-up"},
-    {"tipo": "Camioneta - Servicio Detallado", "precio": 130, "icono": "🌟", "categoria": "Camioneta", "desc": "Detallado premium + abrillantador para SUV/Pick-up"},
+    {"tipo": "Carro - Servicio Normal", "precio": 100, "icono": "🚗", "categoria": "Carro", "desc": "Exterior + aspirado interior estándar"},
+    {"tipo": "Carro - Servicio Detallado", "precio": 120, "icono": "✨", "categoria": "Carro", "desc": "Cera líquida + abrillantador llantas + aromatizante"},
+    {"tipo": "Camioneta - Servicio Normal", "precio": 120, "icono": "🚙", "categoria": "Camioneta", "desc": "Lavado completo para SUV / Pick-up"},
+    {"tipo": "Camioneta - Servicio Detallado", "precio": 140, "icono": "🌟", "categoria": "Camioneta", "desc": "Detallado premium + abrillantador para SUV/Pick-up"},
     {"tipo": "Cuatrimoto", "precio": 350, "icono": "🏍️", "categoria": "Especial / Motos", "desc": "Desengrase profundo a presión todoterreno"},
     {"tipo": "Can-Am", "precio": 400, "icono": "🚜", "categoria": "Especial / Off-Road", "desc": "Lavado exhaustivo alta demanda Off-Road"}
 ]
