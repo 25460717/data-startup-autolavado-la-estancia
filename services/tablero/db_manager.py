@@ -451,8 +451,7 @@ def get_corte_resumen(df_tickets: pd.DataFrame) -> Dict[str, Any]:
             "total_cancelados_monto": 0.0,
             "por_metodo": {
                 "Efectivo": {"monto": 0.0, "conteo": 0},
-                "Transferencia": {"monto": 0.0, "conteo": 0},
-                "Tarjeta": {"monto": 0.0, "conteo": 0}
+                "Transferencia": {"monto": 0.0, "conteo": 0}
             },
             "por_categoria": {}
         }
@@ -466,7 +465,7 @@ def get_corte_resumen(df_tickets: pd.DataFrame) -> Dict[str, Any]:
     total_cancelados_monto = float(df_cancelados['precio_mxn'].sum())
     
     # Desglose por método de pago
-    metodos = ["Efectivo", "Transferencia", "Tarjeta"]
+    metodos = ["Efectivo", "Transferencia"]
     por_metodo = {}
     for m in metodos:
         sub = df_validos[df_validos['metodo_pago'] == m]

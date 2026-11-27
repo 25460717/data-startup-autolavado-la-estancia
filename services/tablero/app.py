@@ -727,7 +727,7 @@ if pagina == "Registro de Ventas (Caja POS)":
     with c_pay1:
         metodo_pago_sel = st.radio(
             "Método de Pago para este cobro:",
-            ["💵 Efectivo (Predeterminado)", "📱 Transferencia", "💳 Tarjeta"],
+            ["💵 Efectivo (Predeterminado)", "📱 Transferencia"],
             horizontal=True,
             index=0,
             help="Selecciona cómo pagó el cliente antes de registrar el servicio."
@@ -742,8 +742,7 @@ if pagina == "Registro de Ventas (Caja POS)":
     metodo_limpio = "Efectivo"
     if "Transferencia" in metodo_pago_sel:
         metodo_limpio = "Transferencia"
-    elif "Tarjeta" in metodo_pago_sel:
-        metodo_limpio = "Tarjeta"
+
         
     # Grid de tarjetas de cobro organizadas (3 columnas amplias para evitar corte de texto)
     cols = st.columns(3)
@@ -819,19 +818,16 @@ if pagina == "Registro de Ventas (Caja POS)":
         </div>
         """, unsafe_allow_html=True)
         
-    # Desglose de corte de caja por método de pago
-    st.markdown("#### 💳 Desglose de Corte por Método de Pago")
-    met_col1, met_col2, met_col3 = st.columns(3)
-    ef_info = corte_hoy['por_metodo']['Efectivo']
-    tr_info = corte_hoy['por_metodo']['Transferencia']
-    tj_info = corte_hoy['por_metodo']['Tarjeta']
+    # Desglose de corte de caja por método de pago (Efectivo y Transferencia)
+    st.markdown("#### 💵 Desglose de Corte por Método de Pago")
+    met_col1, met_col2 = st.columns(2)
+    ef_info = corte_hoy.get('por_metodo', {}).get('Efectivo', {'monto': 0.0, 'conteo': 0})
+    tr_info = corte_hoy.get('por_metodo', {}).get('Transferencia', {'monto': 0.0, 'conteo': 0})
     
     with met_col1:
         st.info(f"💵 **Efectivo:** ${ef_info['monto']:,.2f} MXN ({ef_info['conteo']} lavados)")
     with met_col2:
         st.info(f"📱 **Transferencia:** ${tr_info['monto']:,.2f} MXN ({tr_info['conteo']} lavados)")
-    with met_col3:
-        st.info(f"💳 **Tarjeta:** ${tj_info['monto']:,.2f} MXN ({tj_info['conteo']} lavados)")
         
     # Anulación / Cancelación de tickets con auditoría
     with st.expander("⚠️ Anular / Cancelar Ticket por Error de Captura"):
