@@ -33,26 +33,40 @@ Sistema integral y punto de venta inteligente (POS) para la gestión operativa, 
    - Modelos SARIMA con prueba Dickey-Fuller aumentada, justificación de órdenes (p, d, q) y bandas de confianza al 95%.
    - Arquitectura de microservicios con Docker Compose, Kubernetes y Terraform.
 
+7. **Proyecto Integrador: Modelado y Análisis Predictivo (`.ipynb`):**
+   - Jupyter Notebook reproducible de principio a fin (`proyecto_integrador_modelado_predictivo.ipynb`).
+   - Selección y exploración de datasets enriquecidos (>500 filas y >5 variables explicativas).
+   - Preprocesamiento formal con Scikit-Learn (`Pipeline` y `ColumnTransformer`).
+   - Comparativa de 4 algoritmos de regresión supervisada y modelo autoregresivo SARIMA con descomposición y prueba ADF.
+   - Comparativa de 4 algoritmos de clasificación (Naive Bayes, KNN, Árbol de Decisión y Random Forest) con matrices de confusión.
+   - Conclusiones ejecutivas orientadas a la optimización de turnos e insumos del autolavado.
+
 ---
 
 ## 🛠️ Ejecución Local
 
-1. Clona el repositorio y entra a la carpeta:
+### 1. Iniciar la Aplicación Web (Streamlit POS y Tablero)
 ```bash
-git clone https://github.com/25460717/data-startup-autolavado-la-estancia.git
+# Entrar a la carpeta
 cd data-startup-autolavado-la-estancia
-```
 
-2. Instala las dependencias:
-```bash
+# Instalar dependencias
 pip install -r requirements.txt
-```
 
-3. Inicia la aplicación de Streamlit:
-```bash
+# Iniciar Streamlit
 python -m streamlit run services/tablero/app.py
 ```
 Abre en tu navegador: `http://localhost:8501`.
+
+### 2. Abrir y Ejecutar el Jupyter Notebook del Proyecto Integrador
+Puedes abrirlo en VS Code, Jupyter Lab o Jupyter Notebook:
+```bash
+jupyter notebook notebooks/proyecto_integrador_modelado_predictivo.ipynb
+```
+O directamente el archivo espejo ubicado en la raíz del proyecto:
+```bash
+jupyter notebook proyecto_integrador_modelado_predictivo.ipynb
+```
 
 ---
 
@@ -105,6 +119,10 @@ Si no configuras las credenciales, el sistema funcionará automáticamente en **
 ├── README.md
 ├── docker-compose.yml
 ├── requirements.txt
+├── proyecto_integrador_modelado_predictivo.ipynb  <-- Notebook maestro en la raíz
+├── data/
+│   ├── autolavado_enriquecido.csv                 <-- 15,000 registros con >12 variables explicativas
+│   └── demanda_diaria_enriquecida.csv             <-- 2,221 días continuos de series temporales
 ├── docs/
 │   └── REPORTE_TECNICO_E3_ARQUITECTURA.md
 ├── infra/
@@ -114,7 +132,11 @@ Si no configuras las credenciales, el sistema funcionará automáticamente en **
 │   └── tablero-deployment.yaml
 ├── notebooks/
 │   ├── Avance1_EDA_Autolavado.ipynb
-│   └── Avance2_Modelos_Machine_Learning.ipynb
+│   ├── Avance2_Modelos_Machine_Learning.ipynb
+│   └── proyecto_integrador_modelado_predictivo.ipynb  <-- Notebook maestro en carpeta notebooks
+├── scripts/
+│   ├── preparar_proyecto_integrador.py
+│   └── generar_notebook.py
 ├── services/
 │   ├── ingesta/
 │   ├── modelos/
